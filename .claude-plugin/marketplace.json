@@ -1,0 +1,19 @@
+{
+  "name": "ai-library",
+  "description": "Personal skills and agents for Java/Python test automation and QA work",
+  "owner": {
+    "name": "vitVitale"
+  },
+  "plugins": [
+    {
+      "name": "java-testing",
+      "source": "./plugins/java-testing",
+      "description": "Skills for writing Java tests: JUnit 5, AssertJ/Mockito, RestAssured, UI E2E, Maven/Gradle test setup"
+    },
+    {
+      "name": "qa-agents",
+      "source": "./plugins/qa-agents",
+      "description": "QA subagents: test planning, test case writing, flaky test investigation, bug reports, test code review"
+    }
+  ]
+}

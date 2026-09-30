@@ -1,0 +1,10 @@
+{
+  "name": "qa-agents",
+  "version": "0.1.0",
+  "description": "QA subagents: test planning, test case writing, flaky test investigation, bug reports, test code review",
+  "author": {
+    "name": "vitVitale"
+  },
+  "license": "MIT",
+  "keywords": ["qa", "testing", "test-plan", "test-cases", "flaky-tests", "bug-report", "code-review"]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "java-testing",
+  "version": "0.1.0",
+  "description": "Skills for writing Java tests: JUnit 5, AssertJ/Mockito, RestAssured, UI E2E, Maven/Gradle test setup",
+  "author": {
+    "name": "vitVitale"
+  },
+  "license": "MIT",
+  "keywords": ["java", "testing", "junit5", "assertj", "mockito", "rest-assured", "selenide", "playwright"]
+}

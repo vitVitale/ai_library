@@ -1,0 +1,16 @@
+# IntelliJ per-user files
+.idea/workspace.xml
+.idea/usage.statistics.xml
+.idea/shelf/
+.idea/go.imports.xml
+
+# Python
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+
+# macOS
+.DS_Store
+/.idea/
+/ai_library.iml

@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ailib"
+version = "0.1.0"
+description = "Validate the ai_library skills/agents and install them into target repos for Claude Code and GitHub Copilot"
+requires-python = ">=3.10"
+dependencies = ["PyYAML>=6.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+ailib = "ailib.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ailib*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
