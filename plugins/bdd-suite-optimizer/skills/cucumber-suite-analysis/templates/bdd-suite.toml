@@ -1,0 +1,54 @@
+# Config for bdd_suite.py. Put it in the E2E repo root. Everything is optional.
+
+[suite]
+# features_dir = "src/test/resources/features"      # default: auto-detected
+group_depth = 1                                     # folder level used as "payment type" (1 = first folder under features_dir)
+glue_globs = ["**/src/test/java/**/*.java", "**/src/test/kotlin/**/*.kt"]
+# exclude_tags = ["@performance"]                   # scenarios to ignore completely
+
+[risk]
+high = 45
+medium = 25
+[risk.tags]                                         # extra risk points per tag (without @)
+critical = 30
+p1 = 25
+smoke = 10
+
+[redundancy]
+near_duplicate = 0.85                               # share of identical step skeletons to call two scenarios near-duplicates
+outline_rows_to_push_down = 5
+
+[review]
+limit = 60                                          # max items for AI/human review (highest value first)
+batch_size = 20                                     # items per review-NN.md file (one AI request each)
+
+[confluence]
+snapshot = "qa-knowledge/confluence"                # written by confluence-coverage/scripts/confluence_sync.py
+# pages = ["https://confluence.example.com/pages/viewpage.action?pageId=123"]  # restrict to these pages/subtrees
+min_score = 0.2
+
+[output]
+dir = "qa-knowledge/e2e"
+
+# Which systems a step touches. Regexes matched in step-definition bodies AND step text (case-insensitive).
+# Add YOUR class/field names here; this drives the E2E vs component/unit decision.
+# Defining a key replaces its default list.
+# [layers]
+# csm = ["WireMock", "stubFor", "CsmSimulator", "tipsClient", "\\bCSM\\b", "\\bTIPS\\b", "\\bRT1\\b"]
+# mq = ["KafkaTemplate", "kafka", "JmsTemplate", "\\btopic\\b"]
+# file = ["\\bsftp", "Files\\.", "pain\\.001 file"]
+# rest = ["RestTemplate", "WebClient", "RestAssured", "PaymentApiClient"]
+# db = ["JdbcTemplate", "Repository"]
+
+# Business vocabulary: dimension -> value -> regex fragments (matched at word start in names, steps, tags, example rows).
+# If you define [dimensions], it REPLACES the built-in payment vocabulary, so copy what you need.
+# [dimensions.outcome]
+# accepted = ["accept", "settl", "booked", "ACSC", "ACCC"]
+# rejected = ["reject", "RJCT"]
+# returned = ["return", "pacs\\.004"]
+# recalled = ["recall", "camt\\.056"]
+# timeout = ["time-?out", "timed out", "expir"]
+# [dimensions.check]
+# validation = ["invalid", "missing", "mandatory", "format"]
+# mandate = ["mandate", "FRST", "RCUR", "FNAL", "OOFF"]
+# screening = ["sanction", "screening", "aml"]

@@ -20,6 +20,69 @@ One source of truth: everything is written once in Claude Code plugin layout. Sk
 | | agent | `test-code-reviewer` | Reviews test code quality and coverage gaps |
 | | skill | `test-case-format` | Test case / test plan format and design techniques |
 | | skill | `bug-report-template` | Bug report format and rules |
+| `confluence-coverage` | skill | `confluence-coverage` | Confluence (Server/DC) features ↔ test plans/strategies/cases ↔ automated tests, gap report. No MCP; scripts do the work |
+| `bdd-suite-optimizer` | skill | `cucumber-suite-analysis` | Cucumber E2E suite: risk, coverage, redundancy, test-level advice, coverage-driven golden set. Scripts do the work |
+| | agent | `e2e-suite-optimizer` | Reviews uncertain calls in small batches, plans moves to component/unit tests |
+| | agent | `coverage-mapper` | Resolves ambiguous matches in one batch, answers coverage questions on a tight token budget |
+
+## Confluence coverage (no MCP, low AI cost)
+
+Python scripts (standard library only) do the expensive part locally at zero AI cost. The AI only decides the few ambiguous matches, and those decisions are stored so they're never paid for twice.
+
+```mermaid
+flowchart LR
+  C[(Confluence DC)] -- "confluence_sync.py (your PAT, incremental)" --> S[qa-knowledge/confluence<br/>compact .md + index.jsonl]
+  S --> M["coverage_map.py (offline)"]
+  R[repo test code] --> M
+  O[mapping-overrides.txt] --> M
+  M --> CM[coverage.md]
+  M --> RV[review.md]
+  RV -- "AI: one batch of yes/no" --> O
+```
+
+1. Install into your work repo:
+   ```bash
+   tools/.venv/bin/ailib install --target ~/work/my-repo --plugins java-testing,qa-agents,confluence-coverage
+   ```
+2. Copy `.github/skills/confluence-coverage/templates/confluence-coverage.toml` to the repo root and set your spaces, feature folders and QA folders.
+3. Sync, then map, in your own terminal:
+   ```bash
+   CONFLUENCE_URL=https://confluence.corp CONFLUENCE_PAT=… python .github/skills/confluence-coverage/scripts/confluence_sync.py
+   ```
+   ```bash
+   python .github/skills/confluence-coverage/scripts/coverage_map.py
+   ```
+4. Open `qa-knowledge/coverage.md`. Optionally ask the `coverage-mapper` agent to resolve `qa-knowledge/review.md` in one request.
+
+Only need specific pages? Pass links from any space; each page comes with its child pages:
+```bash
+python .github/skills/confluence-coverage/scripts/confluence_sync.py --page "https://confluence.corp/pages/viewpage.action?pageId=123" --page "https://confluence.corp/display/PAY/SDD+Design" --max-depth 3
+```
+
+## Shrink a Cucumber E2E suite (risk · coverage · redundancy · golden set)
+
+`bdd_suite.py` parses every `.feature` file and the Java step definitions offline. For each scenario it works out:
+- which systems it touches (REST, DB, Kafka/MQ, CSM simulator, files);
+- its payment outcomes and checks (accepted, rejected, returned, recalled, timeout, mandate, screening, cut-off, validation…);
+- a risk score;
+- duplicates, near-duplicates and subsumed scenarios.
+
+It then gives every scenario a tier: **golden** (coverage-driven minimal E2E set), **e2e** (extended/nightly), **component**, **unit**, **merge** or **drop**. The AI (`e2e-suite-optimizer`) only reviews small batches of uncertain or high-risk calls.
+
+```bash
+tools/.venv/bin/ailib install --target ~/work/e2e-repo --plugins bdd-suite-optimizer,confluence-coverage
+```
+```bash
+cd ~/work/e2e-repo && python .github/skills/cucumber-suite-analysis/scripts/bdd_suite.py
+```
+Outputs go to `qa-knowledge/e2e/`:
+- `summary.md`
+- `golden-set.md` and `golden-set.rerun.txt` (run it with `-Dcucumber.features=@qa-knowledge/e2e/golden-set.rerun.txt`)
+- `moves.md`
+- `scenarios.csv`
+- `review-NN.md`
+
+Decisions go in `decisions.txt`. Tune `bdd-suite.toml` `[layers]` with your client/stub class names for the best results.
 
 ## Use with Claude Code (plugin marketplace)
 
@@ -31,6 +94,12 @@ claude plugin install java-testing@ai-library
 ```
 ```bash
 claude plugin install qa-agents@ai-library
+```
+```bash
+claude plugin install confluence-coverage@ai-library
+```
+```bash
+claude plugin install bdd-suite-optimizer@ai-library
 ```
 Or inside a session: `/plugin marketplace add vitVitale/ai_library`, then `/plugin`. Skills trigger automatically (or run `/java-testing:junit5-tests`); agents appear in `/agents`.
 

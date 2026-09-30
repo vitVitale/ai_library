@@ -26,6 +26,19 @@ def test_fresh_install_for_copilot(make_library, target):
     assert lock["library"]["plugins"] == {"alpha": "0.1.0", "beta": "0.1.0"}
 
 
+def test_python_caches_are_not_installed(make_library, target):
+    root = make_library()
+    cache = root / "plugins/alpha/skills/one/scripts/__pycache__"
+    cache.mkdir(parents=True)
+    (cache / "tool.cpython-313.pyc").write_bytes(b"\0")
+    (root / "plugins/alpha/skills/one/scripts/tool.py").write_text("print('hi')\n")
+
+    install(load(root), target)
+
+    assert (target / ".github/skills/one/scripts/tool.py").is_file()
+    assert not (target / ".github/skills/one/scripts/__pycache__").exists()
+
+
 def test_claude_layout_copies_agent_verbatim(make_library, target):
     root = make_library()
     install(load(root), target, targets=["claude"])

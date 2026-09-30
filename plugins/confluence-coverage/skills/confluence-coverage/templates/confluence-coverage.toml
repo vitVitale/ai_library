@@ -1,0 +1,40 @@
+# Config for confluence_sync.py and coverage_map.py. Put this file in the repo root.
+# Page references can be: numeric page id, a page URL (…?pageId=123 or /display/SPACE/Title), or an exact title.
+
+[confluence]
+base_url = "https://confluence.example.com"   # CONFLUENCE_URL env var overrides this
+spaces = ["PROD", "QA"]                          # whole spaces (can be [] when using pages)
+# pages = ["https://confluence.example.com/pages/viewpage.action?pageId=123"]  # pages + subtrees from any space
+# roots = ["Product Requirements", "QA"]       # only sync these subtrees (much faster for big spaces)
+# max_depth = 4                                # levels below roots
+# jira_projects = ["PAY", "AUTH"]              # only treat these prefixes as Jira keys
+# ca_bundle = "/path/to/corp-ca.pem"           # CONFLUENCE_CA_BUNDLE env var overrides this
+
+[features]
+# Pages that ARE features, and/or folder pages whose children are features.
+pages = []
+folders = ["Product Requirements"]
+depth = 1                                      # 1 = direct children of folders only
+# labels = ["feature", "prd"]
+
+[test_docs]
+folders = ["QA", "Test Plans"]
+# pages = []
+# labels = ["test-plan", "test-strategy", "test-cases", "qa"]
+
+[test_docs.keywords]                           # title/label/path words that decide the doc type
+plan = ["test plan", "testing plan", "qa plan", "test approach", "test scope"]
+strategy = ["test strategy", "testing strategy", "qa strategy"]
+cases = ["test case", "test scenario", "checklist", "regression", "smoke test", "uat"]
+
+[code]
+test_globs = ["**/src/test/**/*.java", "**/src/test/**/*.kt", "**/*IT.java", "**/tests/**/*.py", "**/test_*.py"]
+# exclude = [".git", "node_modules", "target", "build", ".venv"]
+
+[match]
+strong = 0.55                                  # text similarity >= strong: auto-accept
+weak = 0.30                                    # between weak and strong: goes to review.md
+max_review_per_feature = 3
+
+[output]
+dir = "qa-knowledge"

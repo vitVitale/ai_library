@@ -1,7 +1,16 @@
 import json
+import sys
 from pathlib import Path
 
 import pytest
+
+# The confluence-coverage scripts are standalone files (run as `python script.py`), not a package.
+CONFLUENCE_SCRIPTS = (Path(__file__).resolve().parents[2]
+                      / "plugins/confluence-coverage/skills/confluence-coverage/scripts")
+BDD_SCRIPTS = (Path(__file__).resolve().parents[2]
+               / "plugins/bdd-suite-optimizer/skills/cucumber-suite-analysis/scripts")
+sys.path.insert(0, str(CONFLUENCE_SCRIPTS))
+sys.path.insert(0, str(BDD_SCRIPTS))
 
 SKILL = """---
 name: {name}

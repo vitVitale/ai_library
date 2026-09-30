@@ -14,6 +14,16 @@
       "name": "qa-agents",
       "source": "./plugins/qa-agents",
       "description": "QA subagents: test planning, test case writing, flaky test investigation, bug reports, test code review"
+    },
+    {
+      "name": "confluence-coverage",
+      "source": "./plugins/confluence-coverage",
+      "description": "Map Confluence features to test plans/strategies/cases and automated tests without MCP, token-efficiently"
+    },
+    {
+      "name": "bdd-suite-optimizer",
+      "source": "./plugins/bdd-suite-optimizer",
+      "description": "Risk/coverage/redundancy analysis of Cucumber E2E suites, golden path set and test-level moves, token-efficient"
     }
   ]
 }

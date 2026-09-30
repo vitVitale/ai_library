@@ -131,7 +131,7 @@ def _desired_files(lib: Library, plugins: list[str], targets: list[str]) -> tupl
             layout = LAYOUT[t]
             for skill in plugin.skills:
                 for src in sorted(skill.path.rglob("*")):
-                    if src.is_file() and src.name != ".DS_Store":
+                    if src.is_file() and not _is_junk(src.relative_to(skill.path)):
                         rel = Path(layout["skills"]) / skill.name / src.relative_to(skill.path)
                         files[rel.as_posix()] = src.read_bytes()
             for agent in plugin.agents:
@@ -142,6 +142,11 @@ def _desired_files(lib: Library, plugins: list[str], targets: list[str]) -> tupl
                     warnings += [f"{agent.name}: {w}" for w in agent_warnings]
                 files[rel] = text.encode("utf-8")
     return files, warnings
+
+
+def _is_junk(rel: Path) -> bool:
+    """Build/OS leftovers that must not be installed into target repos."""
+    return rel.name == ".DS_Store" or rel.suffix == ".pyc" or "__pycache__" in rel.parts
 
 
 def _plugin_version(lib: Library, name: str) -> str:
