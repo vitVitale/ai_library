@@ -134,3 +134,97 @@ def test_different_outcome_is_not_a_duplicate_or_subset(tmp_path):
     s = {x["name"]: x for x in bdd_suite.analyse(tmp_path, {}, tmp_path / OUT)["scenarios"]}
     assert s["Accepted"]["tier"] not in ("drop", "merge")  # same skeleton as "Accepted large" but other outcome
     assert s["Accepted large"]["tier"] not in ("drop", "merge")
+
+
+# --- joint workflow with confluence-coverage --------------------------------------------------------
+FEATURE_PAGES = [
+    {"id": "1", "title": "SEPA Direct Debit mandates", "headings": ["Mandate validation", "First collection FRST"],
+     "intro": "creditor collections need a valid mandate and go to the settlement service", "words": 300},
+    {"id": "2", "title": "Instant payment CSM timeout handling", "headings": ["Timeout"],
+     "intro": "when the CSM simulator does not respond the instant payment times out", "words": 200},
+    {"id": "3", "title": "Card chargebacks", "headings": ["Dispute window"],
+     "intro": "chargeback rules for card schemes", "words": 500},
+    {"id": "4", "title": "IBAN format validation", "headings": ["Error codes"],
+     "intro": "invalid iban format is rejected with an error code", "words": 150},
+    {"id": "5", "title": "SCT payment status API", "headings": ["Status query"],
+     "intro": "the customer can query a SEPA credit transfer status via the status API", "words": 150},
+    {"id": "9", "title": "Team retro notes", "headings": ["What went well"], "intro": "instant payment demo went well",
+     "words": 400},  # in the snapshot but not a curated feature
+]
+
+
+def with_feature_map(repo):
+    snap = repo / "qa-knowledge/confluence"
+    snap.mkdir(parents=True)
+    (snap / "index.jsonl").write_text("\n".join(json.dumps(p) for p in FEATURE_PAGES) + "\n")
+    features = [{"id": p["id"], "title": p["title"], "plan": [{"id": "90"}] if p["id"] in ("1", "2") else [],
+                 "strategy": [], "cases": [], "gaps": [] if p["id"] in ("1", "2") else ["NO_PLAN"]}
+                for p in FEATURE_PAGES if p["id"] != "9"]
+    (repo / "qa-knowledge/coverage.json").write_text(json.dumps({"features": features}))
+    return repo
+
+
+def impact_rows(repo):
+    text = (repo / OUT / "feature-impact.md").read_text()
+    return {line.split(" (")[0].strip("| "): line for line in text.splitlines() if line.startswith("| ") and "(" in line}
+
+
+def test_links_only_to_curated_features_and_reports_impact(repo):
+    s, result = run(with_feature_map(repo))
+
+    assert result["confluence"]["mode"] == "features"
+    assert {x["req"] for x in s.values()} <= {"1", "2", "3", "4", "5"}  # never the retro page "9"
+    assert s["First collection with mandate is settled"]["req"] == "1"
+    assert s["Instant payment times out at CSM"]["req"] == "2"
+    assert s["Invalid instant payment is rejected"]["req"] == "4"
+
+    rows = impact_rows(repo)
+    assert rows["Card chargebacks"].endswith("| NO_PLAN NO_E2E |")
+    assert "ONLY_LOWER" in rows["IBAN format validation"]  # its only scenario moves to unit level
+    assert "| 1/0/0 |" in rows["SEPA Direct Debit mandates"]
+    impact = (repo / OUT / "feature-impact.md").read_text()
+    assert "Totals: 5 features" in impact
+    weak = [x for x in s.values() if x["req"] and x["req_score"] < 0.3 and not x["disabled"]]
+    assert weak and all(f"- {x['id']} \"{x['name'][:60]}\"" in impact for x in weak)
+
+
+def test_every_linked_feature_keeps_a_golden_path(repo):
+    with_feature_map(repo)
+    s, _ = run(repo)
+    status = s["SCT payment status can be queried"]
+    assert status["tier"] == "component"
+    # move its link to feature 3: it becomes that feature's only scenario and is promoted to golden
+    (repo / OUT / "decisions.txt").write_text(f"link {status['id']} 3\nlink {s['SCT recall']['id']} none\n")
+
+    s, result = run(repo)
+    assert s["SCT payment status can be queried"]["req"] == "3"
+    assert s["SCT payment status can be queried"]["tier"] == "golden"
+    assert status["id"] in result["promoted"]
+    assert s["SCT recall"]["req"] == ""
+    assert "NO_E2E" not in impact_rows(repo)["Card chargebacks"]
+
+    _, result = run(repo, {"golden": {"per_feature": False}})
+    assert status["id"] not in result["promoted"]
+
+
+def test_next_agent_follows_the_pipeline(repo):
+    with_feature_map(repo)
+    (repo / "qa-knowledge/review.md").write_text("# Ambiguous matches\n\n## 14 Loyalty\n- 14 26 ? — plan 0.4 \"x\"\n")
+    _, result = run(repo)
+    assert result["next"].startswith("Next: coverage-mapper (1 feature/test-doc pairs")
+    assert "**Next: coverage-mapper" in (repo / OUT / "summary.md").read_text()
+
+    (repo / "qa-knowledge/review.md").write_text("# Ambiguous matches to decide (0)\n")
+    _, result = run(repo)
+    assert result["next"].startswith("Next: e2e-suite-optimizer (review-01.md; 1 items still to decide")
+
+    (repo / "bdd-suite.toml").write_text("[review]\nlimit = 0\n")  # nothing shown, but still pending
+    result, _ = bdd_suite.run(repo)
+    assert result["next"].startswith("Ready")  # no review files -> nothing for the agent to read
+
+
+
+def test_without_confluence_no_feature_impact(repo):
+    _, result = run(repo)
+    assert result["confluence"]["mode"] is None
+    assert not (repo / OUT / "feature-impact.md").exists()

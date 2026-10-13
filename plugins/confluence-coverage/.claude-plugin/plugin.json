@@ -1,10 +1,17 @@
 {
   "name": "confluence-coverage",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Map Confluence (Server/DC) features to test plans, strategies, cases and automated tests without MCP, using offline scripts and minimal AI tokens",
   "author": {
     "name": "vitVitale"
   },
   "license": "MIT",
-  "keywords": ["confluence", "test-coverage", "traceability", "test-plan", "qa", "token-efficient"]
+  "keywords": [
+    "confluence",
+    "test-coverage",
+    "traceability",
+    "test-plan",
+    "qa",
+    "token-efficient"
+  ]
 }

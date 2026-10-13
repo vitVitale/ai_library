@@ -147,3 +147,23 @@ def test_explicit_plan_or_strategy_word_in_title_wins_over_keywords():
     assert coverage_map._doc_type(page("1", "TP-00 Card regression plan"), kw) == "plan"
     assert coverage_map._doc_type(page("1", "Regression strategy"), kw) == "strategy"
     assert coverage_map._doc_type(page("1", "Smoke test checklist"), kw) == "cases"
+
+
+def test_scans_cucumber_feature_files(repo):
+    feature = repo / "src/test/resources/features/loyalty-points/earning.feature"
+    feature.parent.mkdir(parents=True)
+    feature.write_text("@loyalty\nFeature: Earning points\n\n  Scenario: Points for an order\n    Given x\n\n"
+                       "  Scenario Outline: Points per tier\n    Given <tier>\n    Examples:\n      | tier |\n      | gold |\n")
+    f = by_id(build(PAGES, CONFIG, no_overrides(), repo))
+    files = f["14"]["automation"]["files"]  # "Loyalty points" matched via the folder name + feature title
+    assert [(h["path"], h["tests"], h["reason"]) for h in files] == [
+        ("src/test/resources/features/loyalty-points/earning.feature", 2, "terms")]
+
+
+def test_design_document_words_are_not_required_terms(repo):
+    feature = repo / "src/test/resources/features/instant-payment/settle.feature"
+    feature.parent.mkdir(parents=True)
+    feature.write_text("Feature: Instant payment settlement\n\n  Scenario: Settled\n    Given x\n")
+    pages = {**PAGES, "15": page("15", "Instant payment flow design", ["10"])}
+    f = by_id(build(pages, CONFIG, no_overrides(), repo))
+    assert [h["path"] for h in f["15"]["automation"]["files"]] == ["src/test/resources/features/instant-payment/settle.feature"]

@@ -24,8 +24,14 @@ batch_size = 20                                     # items per review-NN.md fil
 
 [confluence]
 snapshot = "qa-knowledge/confluence"                # written by confluence-coverage/scripts/confluence_sync.py
+coverage = "qa-knowledge/coverage.json"             # curated feature list from coverage_map.py; if present, scenarios
+                                                    # link only to those features (else to any snapshot page)
 # pages = ["https://confluence.example.com/pages/viewpage.action?pageId=123"]  # restrict to these pages/subtrees
-min_score = 0.2
+min_score = 0.2                                     # weakest text match that still links a scenario
+# weak_score = 0.3                                  # links below this are listed under "Weak links to verify"
+
+[golden]
+# per_feature = true                                # keep >=1 golden scenario per linked feature (default: on with coverage.json)
 
 [output]
 dir = "qa-knowledge/e2e"

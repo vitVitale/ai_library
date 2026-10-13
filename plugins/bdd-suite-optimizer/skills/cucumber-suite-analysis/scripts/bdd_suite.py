@@ -142,7 +142,9 @@ class Sc:
     reason: str = ""
     related: str = ""  # representative / superset scenario id
     decided: bool = False
-    req: str = ""  # best matching Confluence page id
+    req: str = ""  # best matching Confluence page / feature id
+    req_score: float = 0.0
+    req_manual: bool = False
     disabled: bool = False
 
 
@@ -377,7 +379,9 @@ def load_decisions(path: Path) -> dict[str, str]:
         parts = body.split()
         if not parts:
             continue
-        if len(parts) == 2 and (parts[1] in TIERS or parts[1].startswith("merge:")):
+        if len(parts) == 3 and parts[0] == "link":
+            out["link:" + parts[1]] = parts[2]  # page id, or "none"
+        elif len(parts) == 2 and (parts[1] in TIERS or parts[1].startswith("merge:")):
             out[parts[0]] = parts[1]
             if note.strip():
                 out[parts[0] + "#"] = note.strip()
@@ -386,9 +390,10 @@ def load_decisions(path: Path) -> dict[str, str]:
     return out
 
 
-def golden_set(scs: list[Sc]) -> tuple[list[Sc], list[str], list[str]]:
+def golden_set(scs: list[Sc], per_feature: bool = False) -> tuple[list[Sc], list[str], list[str]]:
     """Greedy set cover of (folder, dimension value) atoms using E2E candidates.
 
+    With ``per_feature``, every linked Confluence feature also keeps one golden scenario.
     Returns (golden scenarios, promoted ids, atoms covered only by moved tests)."""
     live = [s for s in scs if not s.disabled]
     universe = {(s.group, a) for s in live for a in s.atoms}
@@ -419,6 +424,24 @@ def golden_set(scs: list[Sc]) -> tuple[list[Sc], list[str], list[str]]:
             golden.append(s)
             promoted.append(s.id)
             covered |= {(s.group, a) for a in s.atoms}
+    if per_feature:
+        by_feature = defaultdict(list)
+        for s in live:
+            if s.req:
+                by_feature[s.req].append(s)
+        for fid, members in sorted(by_feature.items()):
+            if any(s.tier == "golden" for s in members):
+                continue
+            for pool_tiers, note in ((("e2e",), "golden path"), (("component", "merge"), "promoted: only")):
+                pool = [s for s in members if s.tier in pool_tiers]
+                if pool:
+                    s = max(pool, key=lambda x: (x.risk, -len(x.steps)))
+                    s.tier, s.reason = "golden", f"{note} E2E test of Confluence feature {fid}"
+                    golden.append(s)
+                    covered |= {(s.group, a) for a in s.atoms}
+                    if pool_tiers != ("e2e",):
+                        promoted.append(s.id)
+                    break
     lost = sorted(f"{g} {a}" for g, a in universe - covered if a != "channel:api")  # API is everyone's entry point
     return golden, promoted, lost
 
@@ -429,16 +452,29 @@ def _tokens(text: str) -> list[str]:
     return [t for t in re.split(r"[^a-z0-9]+", text.lower()) if len(t) > 2 and t not in STOP and not t.isdigit()]
 
 
-def link_confluence(scs: list[Sc], cfg: dict, repo: Path) -> dict:
+def load_feature_map(cfg: dict, repo: Path) -> dict | None:
+    """coverage.json written by confluence-coverage/coverage_map.py: the curated feature list."""
+    path = repo / cfg.get("confluence", {}).get("coverage", "qa-knowledge/coverage.json")
+    if not path.is_file():
+        return None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return {"path": path, "features": {f["id"]: f for f in data.get("features", [])}}
+
+
+def link_confluence(scs: list[Sc], cfg: dict, repo: Path, decisions: dict | None = None) -> dict:
     ccfg = cfg.get("confluence", {})
     index = repo / ccfg.get("snapshot", "qa-knowledge/confluence") / "index.jsonl"
-    if not index.is_file():
-        return {"pages": 0, "uncovered": []}
+    fmap = load_feature_map(cfg, repo)
     pages = {}
-    for line in index.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            p = json.loads(line)
-            pages[p["id"]] = p
+    if index.is_file():
+        for line in index.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                p = json.loads(line)
+                pages[p["id"]] = p
+    if fmap:  # link only to features curated by coverage-mapper (respects its ignore/feature overrides)
+        pages = {fid: pages.get(fid) or {"id": fid, "title": f["title"]} for fid, f in fmap["features"].items()}
+    if not pages:
+        return {"pages": 0, "uncovered": [], "linked": {}, "mode": None}
     wanted = _resolve(ccfg.get("pages") or [], pages)
     if wanted:
         pages = {pid: p for pid, p in pages.items() if pid in wanted or wanted & set(p.get("ancestors") or [])}
@@ -467,11 +503,20 @@ def link_confluence(scs: list[Sc], cfg: dict, repo: Path) -> dict:
         if scores:
             best, score = max(scores.items(), key=lambda kv: (kv[1], kv[0]))
             if score >= min_score:
-                s.req = best
-                linked[best] += 1
+                s.req, s.req_score = best, round(score, 2)
+    for key, value in (decisions or {}).items():  # `link <scenario> <page|none>` lines in decisions.txt
+        if key.startswith("link:"):
+            s = next((x for x in scs if x.id == key[5:]), None)
+            if s is not None:
+                s.req, s.req_score, s.req_manual = ("" if value == "none" else value), 1.0, True
+    for s in scs:
+        if s.req:
+            linked[s.req] += 1
     uncovered = [{"id": pid, "title": p["title"]} for pid, p in sorted(pages.items(), key=lambda kv: kv[1]["title"])
-                 if not linked[pid] and (p.get("words") or 0) >= 50]
-    return {"pages": len(pages), "linked": dict(linked), "uncovered": uncovered}
+                 if not linked[pid] and (fmap or (p.get("words") or 0) >= 50)]
+    return {"pages": len(pages), "linked": dict(linked), "uncovered": uncovered,
+            "mode": "features" if fmap else "pages", "features": fmap["features"] if fmap else {},
+            "weak_below": float(ccfg.get("weak_score", min_score + 0.1))}
 
 
 def _resolve(refs, pages) -> set[str]:
@@ -487,9 +532,10 @@ def _resolve(refs, pages) -> set[str]:
 
 
 # --- review ---------------------------------------------------------------------------------------
-def select_review(scs: list[Sc], cfg: dict) -> list[Sc]:
+def select_review(scs: list[Sc], cfg: dict, limit: int | None = None) -> list[Sc]:
+    """Highest-value undecided items, capped at [review].limit (pass a limit to override)."""
     rcfg = cfg.get("review", {})
-    limit = int(rcfg.get("limit", 60))
+    limit = int(rcfg.get("limit", 60)) if limit is None else limit
 
     def priority(s):
         if s.decided or s.disabled:
@@ -533,7 +579,7 @@ def render_review(batch: list[Sc], n: int, total: int, cfg: dict) -> str:
 
 
 # --- reports --------------------------------------------------------------------------------------
-def render_summary(scs, meta, red, gold, promoted, lost, conf, review_files, cfg) -> str:
+def render_summary(scs, meta, red, gold, promoted, lost, conf, review_files, cfg, next_step="") -> str:
     live = [s for s in scs if not s.disabled]
     groups = sorted({s.group for s in live})
     tc = {g: Counter(s.tier for s in live if s.group == g) for g in groups}
@@ -584,18 +630,98 @@ def render_summary(scs, meta, red, gold, promoted, lost, conf, review_files, cfg
               f"external system (CSM/MQ/file): if this looks too low, add your client/stub class names to [layers]"]
     if conf.get("pages"):
         unc = conf["uncovered"]
+        kind = "features (from coverage.json)" if conf.get("mode") == "features" else "pages"
         lines += ["", "## Confluence",
-                  f"- {conf['pages']} pages, {len(conf['linked'])} linked to at least one scenario; "
-                  f"{len(unc)} substantial pages with no scenario (check they're covered at some level):"]
+                  f"- {conf['pages']} {kind}, {len(conf['linked'])} linked to at least one scenario; "
+                  f"{len(unc)} with no scenario (check they're covered at some level). Per-feature view: "
+                  f"feature-impact.md"]
         lines += [f"  - {p['title']} ({p['id']})" for p in unc[:25]]
         if len(unc) > 25:
             lines.append(f"  - … +{len(unc) - 25} more in analysis.json")
     decided = sum(1 for s in scs if s.decided)
-    lines += ["", "## Next",
+    lines += ["", "## Next", f"- **{next_step}**",
               f"- {sum(len(b) for b in review_files)} items to review in "
               + (", ".join(f"review-{i:02d}.md" for i in range(1, len(review_files) + 1)) or "(none)")
               + f" · {decided} decisions applied",
-              "- Details: golden-set.md, moves.md, scenarios.csv"]
+              "- Details: " + ("feature-impact.md, " if conf.get("mode") else "") + "golden-set.md, moves.md, scenarios.csv"]
+    return "\n".join(lines) + "\n"
+
+
+def pending_feature_review(repo: Path, cfg: dict) -> int:
+    """Open feature<->doc pairs left by confluence-coverage/coverage_map.py in review.md."""
+    cov = repo / cfg.get("confluence", {}).get("coverage", "qa-knowledge/coverage.json")
+    review = cov.parent / "review.md"
+    if not review.is_file():
+        return 0
+    return sum(1 for line in review.read_text(encoding="utf-8").splitlines() if re.match(r"^- \S+ \S+ \? ", line))
+
+
+def next_agent(repo: Path, cfg: dict, batches: list, pending: int = 0) -> str:
+    open_pairs = pending_feature_review(repo, cfg)
+    if open_pairs:
+        return (f"Next: coverage-mapper ({open_pairs} feature/test-doc pairs in review.md), "
+                f"then e2e-suite-optimizer")
+    if batches:
+        return (f"Next: e2e-suite-optimizer (review-01.md; {pending} items still to decide, "
+                f"shown {sum(len(b) for b in batches)} at a time in {len(batches)} file(s))")
+    return "Ready: read feature-impact.md and summary.md"
+
+
+def render_feature_impact(scs: list[Sc], conf: dict, cfg) -> str:
+    """One row per Confluence feature: what the E2E shrink means for it."""
+    live = [s for s in scs if not s.disabled]
+    by_feature = defaultdict(list)
+    for s in live:
+        if s.req:
+            by_feature[s.req].append(s)
+    features = conf.get("features") or {}
+    ids = list(features) if conf.get("mode") == "features" else sorted(by_feature)
+    titles = {**{u["id"]: u["title"] for u in conf.get("uncovered", [])},
+              **{fid: f["title"] for fid, f in features.items()}}
+    weak_below = conf.get("weak_below", 0.3)
+    lines = [
+        "# Feature impact of the E2E shrink",
+        "Per Confluence feature: test docs (plan/strategy/cases, from coverage.json) · E2E scenarios linked now · "
+        "after the shrink. Fix a wrong link with `link <scenario_id> <page_id|none>` in decisions.txt.",
+        "Flags: NO_PLAN no test doc · NO_E2E no scenario · ONLY_LOWER every scenario moves down/out · "
+        "WEAK_LINK(n) n scenarios linked by weak text similarity.",
+        "",
+        "| Feature (id) | Docs P/S/C | E2E now | Golden | Ext | →Comp | →Unit | Merge/Drop | Max risk | Flags |",
+        "|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    counts = Counter()
+    for fid in sorted(ids, key=lambda i: titles.get(i, i).casefold()):
+        members = by_feature.get(fid, [])
+        t = Counter(s.tier for s in members)
+        f = features.get(fid, {})
+        docs = "/".join(str(len(f.get(k) or [])) for k in ("plan", "strategy", "cases")) if f else "—"
+        flags = []
+        if f and "NO_PLAN" in (f.get("gaps") or []):
+            flags.append("NO_PLAN")
+        if not members:
+            flags.append("NO_E2E")
+        elif not (t["golden"] + t["e2e"]):
+            flags.append("ONLY_LOWER")
+        weak = sum(1 for s in members if not s.req_manual and s.req_score < weak_below)
+        if weak:
+            flags.append(f"WEAK_LINK({weak})")
+        counts.update(x.split("(")[0] for x in flags)
+        max_risk = max((s.risk for s in members), default=0)
+        lines.append(f"| {titles.get(fid, fid)[:40].replace('|', '/')} ({fid}) | {docs} | {len(members)} | "
+                     f"{t['golden']} | {t['e2e']} | {t['component']} | {t['unit']} | {t['merge'] + t['drop']} | "
+                     f"{risk_level(max_risk, cfg) + str(max_risk) if members else '—'} | {' '.join(flags)} |")
+    unlinked = sum(1 for s in live if not s.req)
+    lines += ["", f"Totals: {len(ids)} features · " + " · ".join(f"{k} {v}" for k, v in sorted(counts.items())),
+              f"Scenarios linked to no feature: {unlinked} (scenarios.csv rows with empty confluence_page)."]
+    weak = sorted((s for s in live if s.req and not s.req_manual and s.req_score < weak_below),
+                  key=lambda s: (s.req, s.req_score))
+    if weak:
+        lines += ["", f"## Weak links to verify ({len(weak)})",
+                  "Fix with `link <scenario_id> <feature_id|none>` in decisions.txt."]
+        lines += [f"- {s.id} \"{s.name[:60]}\" → {titles.get(s.req, s.req)[:30]} ({s.req}) {s.req_score}"
+                  for s in weak[:40]]
+        if len(weak) > 40:
+            lines.append(f"- … +{len(weak) - 40} more (scenarios.csv link_score)")
     return "\n".join(lines) + "\n"
 
 
@@ -640,11 +766,12 @@ def write_csv(path: Path, scs: list[Sc], cfg) -> None:
     with path.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["id", "folder", "file", "line", "feature", "scenario", "tier", "risk", "risk_level", "reason",
-                    "related", "layers", "dimensions", "rows", "steps", "tags", "confluence_page", "decided"])
+                    "related", "layers", "dimensions", "rows", "steps", "tags", "confluence_page", "link_score", "decided"])
         for s in scs:
             w.writerow([s.id, s.group, s.path, s.line, s.feature, s.name, "disabled" if s.disabled else s.tier,
                         s.risk, risk_level(s.risk, cfg), s.reason, s.related, " ".join(sorted(s.layers)),
-                        " ".join(sorted(s.atoms)), s.rows, len(s.steps), " ".join(s.tags), s.req, s.decided])
+                        " ".join(sorted(s.atoms)), s.rows, len(s.steps), " ".join(s.tags), s.req,
+                        "manual" if s.req_manual else s.req_score, s.decided])
 
 
 def analyse(repo: Path, cfg: dict, out: Path) -> dict:
@@ -657,8 +784,9 @@ def analyse(repo: Path, cfg: dict, out: Path) -> dict:
         recommend_level(s)
     decisions = load_decisions(out / "decisions.txt")
     apply_decisions(scs, decisions)
-    gold, promoted, lost = golden_set(scs)
-    conf = link_confluence(scs, cfg, repo)
+    conf = link_confluence(scs, cfg, repo, decisions)  # before golden: the per-feature rule needs the links
+    per_feature = cfg.get("golden", {}).get("per_feature", conf["mode"] == "features")
+    gold, promoted, lost = golden_set(scs, per_feature=per_feature)
 
     review = select_review(scs, cfg)
     size = int(cfg.get("review", {}).get("batch_size", 20))
@@ -669,25 +797,43 @@ def analyse(repo: Path, cfg: dict, out: Path) -> dict:
         old.unlink()
     for i, batch in enumerate(batches, 1):
         (out / f"review-{i:02d}.md").write_text(render_review(batch, i, len(batches), cfg), encoding="utf-8")
-    (out / "summary.md").write_text(render_summary(scs, meta, red, gold, promoted, lost, conf, batches, cfg), encoding="utf-8")
+    pending = len(select_review(scs, cfg, limit=len(scs)))  # the review files only show the top [review].limit
+    next_step = next_agent(repo, cfg, batches, pending)
+    if conf["mode"]:
+        (out / "feature-impact.md").write_text(render_feature_impact(scs, conf, cfg), encoding="utf-8")
+    else:
+        (out / "feature-impact.md").unlink(missing_ok=True)
+    (out / "summary.md").write_text(
+        render_summary(scs, meta, red, gold, promoted, lost, conf, batches, cfg, next_step), encoding="utf-8")
     (out / "golden-set.md").write_text(render_golden(gold, cfg), encoding="utf-8")
     (out / "golden-set.rerun.txt").write_text(
         "\n".join(f"{s.path}:{s.line}" for s in sorted(gold, key=lambda s: (s.path, s.line))) + "\n", encoding="utf-8")
     (out / "moves.md").write_text(render_moves(scs, cfg), encoding="utf-8")
     write_csv(out / "scenarios.csv", scs, cfg)
     result = {
-        "meta": meta, "redundancy": red, "promoted": promoted, "uncovered_atoms": lost, "confluence": conf,
+        "meta": meta, "redundancy": red, "promoted": promoted, "uncovered_atoms": lost, "next": next_step,
+        "confluence": {k: v for k, v in conf.items() if k != "features"},
         "tiers": dict(Counter("disabled" if s.disabled else s.tier for s in scs)),
         "scenarios": [{
             "id": s.id, "path": s.path, "line": s.line, "group": s.group, "feature": s.feature, "name": s.name,
             "tags": s.tags, "tier": s.tier, "risk": s.risk, "why": s.why, "confidence": s.confidence,
             "reason": s.reason, "related": s.related, "layers": sorted(s.layers), "atoms": sorted(s.atoms),
-            "rows": s.rows, "steps": len(s.steps), "unmatched_steps": s.unmatched_steps, "req": s.req,
+            "rows": s.rows, "steps": len(s.steps), "unmatched_steps": s.unmatched_steps, "req": s.req, "req_score": s.req_score,
             "disabled": s.disabled, "decided": s.decided,
         } for s in scs],
     }
     (out / "analysis.json").write_text(json.dumps(result, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
     return result
+
+
+def run(repo: Path, config: str = DEFAULT_CONFIG, features: str | None = None, out: str | None = None):
+    """Load config and analyse. Returns (result, output dir). Used by main() and qa_refresh.py."""
+    repo = repo.resolve()
+    cfg = load_config(Path(config) if Path(config).is_absolute() else repo / config)
+    if features:
+        cfg.setdefault("suite", {})["features_dir"] = features
+    out_dir = Path(out) if out else repo / cfg.get("output", {}).get("dir", "qa-knowledge/e2e")
+    return analyse(repo, cfg, out_dir), out_dir
 
 
 def main(argv=None) -> int:
@@ -698,12 +844,7 @@ def main(argv=None) -> int:
     parser.add_argument("--out", help="output dir (default [output].dir or qa-knowledge/e2e)")
     args = parser.parse_args(argv)
 
-    repo = Path(args.repo).resolve()
-    cfg = load_config(Path(args.config) if Path(args.config).is_absolute() else repo / args.config)
-    if args.features:
-        cfg.setdefault("suite", {})["features_dir"] = args.features
-    out = Path(args.out) if args.out else repo / cfg.get("output", {}).get("dir", "qa-knowledge/e2e")
-    result = analyse(repo, cfg, out)
+    result, out = run(Path(args.repo), args.config, args.features, args.out)
     t = result["tiers"]
     print(f"{len(result['scenarios'])} scenarios -> golden {t.get('golden', 0)}, e2e {t.get('e2e', 0)}, "
           f"component {t.get('component', 0)}, unit {t.get('unit', 0)}, merge {t.get('merge', 0)}, "

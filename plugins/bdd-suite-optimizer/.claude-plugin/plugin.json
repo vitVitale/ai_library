@@ -1,10 +1,19 @@
 {
   "name": "bdd-suite-optimizer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Classify large Cucumber E2E suites by risk, coverage and redundancy; pick a golden path set and plan moves to component/unit tests, with Confluence context and minimal AI tokens",
   "author": {
     "name": "vitVitale"
   },
   "license": "MIT",
-  "keywords": ["cucumber", "bdd", "e2e", "test-pyramid", "risk-based-testing", "payments", "sepa", "token-efficient"]
+  "keywords": [
+    "cucumber",
+    "bdd",
+    "e2e",
+    "test-pyramid",
+    "risk-based-testing",
+    "payments",
+    "sepa",
+    "token-efficient"
+  ]
 }

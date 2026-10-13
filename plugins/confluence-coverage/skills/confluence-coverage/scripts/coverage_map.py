@@ -35,7 +35,7 @@ DEFAULT_KEYWORDS = {
 }
 DEFAULT_FEATURE_KEYWORDS = ["requirement", "prd", "specification", "feature", "epic", "user stor"]
 DEFAULT_TEST_GLOBS = ["**/src/test/**/*.java", "**/src/test/**/*.kt", "**/*IT.java",
-                      "**/tests/**/*.py", "**/test_*.py", "**/*_test.py"]
+                      "**/tests/**/*.py", "**/test_*.py", "**/*_test.py", "**/*.feature"]
 DEFAULT_EXCLUDE = [".git", "node_modules", "target", "build", ".venv", "venv", ".gradle", ".idea"]
 STOPWORDS = {
     "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "into", "is", "it", "of", "on",
@@ -47,9 +47,13 @@ GENERIC_QA = {
     "checklist", "scenario", "scenarios", "requirement", "requirements", "feature", "features", "spec",
     "specification", "prd", "epic", "story", "stories", "approach", "scope", "suite", "regression",
     "smoke", "acceptance", "uat", "e2e", "api", "ui", "manual", "automation", "automated",
+    # generic design-document words: "Instant payment flow design" is about "instant payment"
+    "flow", "flows", "design", "designs", "handling", "processing", "process", "architecture", "concept",
+    "solution", "hld", "lld", "implementation", "discussion", "description",
 }
 STRUCTURAL = ("manual", "link", "jira", "child")
-TEST_COUNT_RE = re.compile(r"@(?:Test|ParameterizedTest|RepeatedTest|TestFactory)\b|^\s*(?:async\s+)?def test_", re.M)
+TEST_COUNT_RE = re.compile(r"@(?:Test|ParameterizedTest|RepeatedTest|TestFactory)\b|^\s*(?:async\s+)?def test_"
+                           r"|^\s*(?:Scenario(?: Outline| Template)?|Example):", re.M)
 DESCRIPTOR_RES = [
     re.compile(r"\bclass\s+(\w+)"),
     re.compile(r"\bvoid\s+(\w+)\s*\("),
@@ -58,6 +62,11 @@ DESCRIPTOR_RES = [
     re.compile(r"@DisplayName\(\s*\"([^\"]+)\""),
     re.compile(r"@Tag\(\s*\"([^\"]+)\""),
     re.compile(r"@pytest\.mark\.(\w+)"),
+]
+# Cucumber .feature files: feature/rule/scenario names and tags describe what is tested.
+GHERKIN_RES = [
+    re.compile(r"^\s*(?:Feature|Rule|Scenario(?: Outline| Template)?|Example):\s*(.+)$", re.M),
+    re.compile(r"(?:^|\s)@([\w-]+)", re.M),
 ]
 ALLURE_RE = re.compile(r"(?:@(?:Feature|Story|Epic)\(\s*\"|allure\.(?:feature|story|epic)\(\s*[\"'])([^\"']+)")
 
@@ -215,6 +224,9 @@ def scan_tests(repo: Path, globs: list[str], exclude: list[str], projects) -> li
             seen.add(path)
             text = path.read_text(encoding="utf-8", errors="ignore")
             descriptors = [path.stem] + [m for rx in DESCRIPTOR_RES for m in rx.findall(text)]
+            if path.suffix == ".feature":
+                # folders like features/sdd-payment/ name the payment type the scenarios belong to
+                descriptors += list(rel.parts[:-1]) + [m for rx in GHERKIN_RES for m in rx.findall(text)]
             allure = [norm_title(m) for m in ALLURE_RE.findall(text)]
             files.append({
                 "path": rel.as_posix(),

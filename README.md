@@ -84,6 +84,30 @@ Outputs go to `qa-knowledge/e2e/`:
 
 Decisions go in `decisions.txt`. Tune `bdd-suite.toml` `[layers]` with your client/stub class names for the best results.
 
+## Confluence + E2E together
+
+The agents can't call each other, so they cooperate through the shared `qa-knowledge/` folder. Run them in this order:
+
+| Step | Who | Cost | Output |
+|---|---|---|---|
+| 1. `confluence_sync.py --page <links>` | you (token stays in your terminal) | 0 | `qa-knowledge/confluence/` |
+| 2. `qa_refresh.py` | script: `coverage_map.py` → `bdd_suite.py` | 0 | `coverage.*`, `review.md`, `e2e/*` |
+| 3. `coverage-mapper` | AI, decides `review.md` | 1 request | `mapping-overrides.txt` (curated features) |
+| 4. `qa_refresh.py` | script | 0 | scenarios linked to the curated features |
+| 5. `e2e-suite-optimizer` | AI, one `review-NN.md` per request | ~1 request per 20 items | `e2e/decisions.txt` |
+| 6. `qa_refresh.py`, then read `e2e/feature-impact.md` | script, then you or either agent | 0–1 | per-feature before/after view |
+
+```bash
+python .github/skills/cucumber-suite-analysis/scripts/qa_refresh.py
+```
+- The last line printed by `qa_refresh.py` always names the next step.
+- Every Confluence feature that has scenarios keeps at least one golden E2E scenario.
+- In `e2e/feature-impact.md`:
+  - `ONLY_LOWER`: a feature that would lose all its E2E scenarios;
+  - `NO_E2E`: a feature that had none to begin with.
+
+A first full cycle costs about 5 requests; later cycles only cost requests for new or changed items.
+
 ## Use with Claude Code (plugin marketplace)
 
 ```bash

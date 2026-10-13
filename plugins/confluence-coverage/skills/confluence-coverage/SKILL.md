@@ -63,5 +63,12 @@ Then re-run `coverage_map.py`; `review.md` should shrink to 0. If a pair really 
 
 In the Plan/Cases columns, `~` marks a text-similarity match. Everything else was matched by a page link, a shared Jira key, a child page or a manual override.
 
+## Combined workflow with bdd-suite-optimizer (E2E repos)
+1. You: `confluence_sync.py --page <links>` (needs your token).
+2. `python .github/skills/cucumber-suite-analysis/scripts/qa_refresh.py` runs this skill's `coverage_map.py`, then the E2E analysis. The last line says which agent to run next.
+3. `coverage-mapper` decides `review.md`. This curates the feature list in `coverage.json`.
+4. `e2e-suite-optimizer` decides the E2E batches. Scenarios are linked to *your curated features*, and every feature keeps one golden path.
+5. Per-feature result: `qa-knowledge/e2e/feature-impact.md`.
+
 ## Data handling
 The snapshot contains internal documentation. Commit `qa-knowledge/` only to internal repositories. To keep page text out of git, add `qa-knowledge/confluence/pages/` to `.gitignore`: coverage still works from `index.jsonl`.

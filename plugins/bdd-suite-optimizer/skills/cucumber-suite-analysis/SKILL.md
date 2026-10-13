@@ -57,3 +57,13 @@ Re-run the script after each batch; the batches shrink as decisions accumulate.
 | drop | Exact duplicate, or all its steps are contained in another scenario. |
 
 Before deleting anything in `moves.md`, confirm the lower-level test exists. The summary lists the coverage that would otherwise be lost.
+
+## Combined workflow with confluence-coverage
+Run `python <scripts>/qa_refresh.py` instead of `bdd_suite.py`. If confluence-coverage is installed and a snapshot exists, it first runs `coverage_map.py` to produce `qa-knowledge/coverage.json` (the curated feature list).
+
+The analysis then:
+- links scenarios only to those features;
+- keeps ≥1 golden scenario per linked feature (`[golden] per_feature`);
+- writes `feature-impact.md`: per feature, test docs, E2E scenarios now vs after the shrink, and flags `NO_PLAN`, `NO_E2E`, `ONLY_LOWER`, `WEAK_LINK`.
+
+Fix a wrong link with `link <scenario_id> <feature_id|none>` in `decisions.txt`. The last line of `qa_refresh.py` and `summary.md` say which agent runs next: `coverage-mapper` while `review.md` has open pairs, then `e2e-suite-optimizer`.
