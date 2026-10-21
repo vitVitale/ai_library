@@ -9,7 +9,10 @@ CONFLUENCE_SCRIPTS = (Path(__file__).resolve().parents[2]
                       / "plugins/confluence-coverage/skills/confluence-coverage/scripts")
 BDD_SCRIPTS = (Path(__file__).resolve().parents[2]
                / "plugins/bdd-suite-optimizer/skills/cucumber-suite-analysis/scripts")
+SAD_SCRIPTS = (Path(__file__).resolve().parents[2]
+               / "plugins/solution-architecture/skills/architecture-review/scripts")
 sys.path.insert(0, str(CONFLUENCE_SCRIPTS))
+sys.path.insert(0, str(SAD_SCRIPTS))
 sys.path.insert(0, str(BDD_SCRIPTS))
 
 SKILL = """---

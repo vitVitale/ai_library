@@ -1,0 +1,10 @@
+{
+  "name": "solution-architecture",
+  "version": "0.1.0",
+  "description": "Create and review solution design documents and C4 architecture diagrams (Mermaid/PlantUML/draw.io): SDD and ADR templates, a deterministic SDD linter and solution + enterprise review lenses",
+  "author": {
+    "name": "vitVitale"
+  },
+  "license": "MIT",
+  "keywords": ["architecture", "solution-design", "sdd", "c4", "adr", "architecture-review", "mermaid", "plantuml", "drawio", "token-efficient"]
+}

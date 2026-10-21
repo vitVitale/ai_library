@@ -1,6 +1,6 @@
 {
   "name": "ai-library",
-  "description": "Personal skills and agents for Java/Python test automation and QA work",
+  "description": "Personal skills and agents for Java/Python test automation, QA and solution architecture work",
   "owner": {
     "name": "vitVitale"
   },
@@ -24,6 +24,11 @@
       "name": "bdd-suite-optimizer",
       "source": "./plugins/bdd-suite-optimizer",
       "description": "Risk/coverage/redundancy analysis of Cucumber E2E suites, golden path set and test-level moves, token-efficient"
+    },
+    {
+      "name": "solution-architecture",
+      "source": "./plugins/solution-architecture",
+      "description": "Create and review solution design documents, C4 diagrams and ADRs, with a deterministic SDD linter"
     }
   ]
 }
