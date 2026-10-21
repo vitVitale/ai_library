@@ -1,6 +1,6 @@
 # ai_library
 
-My skills and agents for **Claude Code** and the **GitHub Copilot coding agent**, focused on Java/Python test automation and QA.
+My skills and agents for **Claude Code** and the **GitHub Copilot coding agent**, focused on Java/Python test automation, QA and solution architecture.
 
 One source of truth: everything is written once in Claude Code plugin layout. Skills use the shared `SKILL.md` format that both tools understand. Agents are converted to Copilot's `.agent.md` format when installed.
 
@@ -24,6 +24,10 @@ One source of truth: everything is written once in Claude Code plugin layout. Sk
 | `bdd-suite-optimizer` | skill | `cucumber-suite-analysis` | Cucumber E2E suite: risk, coverage, redundancy, test-level advice, coverage-driven golden set. Scripts do the work |
 | | agent | `e2e-suite-optimizer` | Reviews uncertain calls in small batches, plans moves to component/unit tests |
 | | agent | `coverage-mapper` | Resolves ambiguous matches in one batch, answers coverage questions on a tight token budget |
+| `solution-architecture` | skill | `solution-design-doc` | Solution design document (SDD) template, C4 diagrams as code (Mermaid / PlantUML / draw.io), measurable NFRs, ADRs |
+| | skill | `architecture-review` | Two-lens review checklist (solution + enterprise), guardrails template, `sad_lint.py` structural linter |
+| | agent | `solution-architect` | Requirements → SDD + diagrams + ADRs, self-checked with the linter |
+| | agent | `architecture-reviewer` | Architecture-board style review: verdict + severity-ranked findings. Read-only |
 
 ## Confluence coverage (no MCP, low AI cost)
 
@@ -108,6 +112,42 @@ python .github/skills/cucumber-suite-analysis/scripts/qa_refresh.py
 
 A first full cycle costs about 5 requests; later cycles only cost requests for new or changed items.
 
+## Solution design: create and review (solution + enterprise lens)
+
+A **solution architect** designs one solution for one business problem: requirements, quality targets, C4 views, ADRs and risks. An **enterprise architect** owns the whole landscape: principles, tech radar, shared platforms, data ownership and the roadmap. So documents are written at solution level and reviewed with both lenses.
+
+```mermaid
+flowchart LR
+  REQ[requirements] --> SA["solution-architect (AI)"]
+  SA --> SDD[sdd.md + diagrams + adr/]
+  SDD --> L["sad_lint.py (offline, 0 tokens)"]
+  L --> AR["architecture-reviewer (AI)"]
+  G[architecture-guardrails.md] --> AR
+  AR --> V[verdict + findings]
+```
+
+1. Install into the repo where the design docs live:
+   ```bash
+   tools/.venv/bin/ailib install --target ~/work/my-repo --plugins solution-architecture
+   ```
+2. Optional, but needed for the enterprise lens: copy `.github/skills/architecture-review/templates/architecture-guardrails.md` to the repo root and fill in your principles, tech radar, shared platforms and data ownership.
+3. Write a design with the `solution-architect` agent, or start from `.github/skills/solution-design-doc/templates/solution-design.md`.
+4. Lint it before spending AI tokens on a review:
+   ```bash
+   python .github/skills/architecture-review/scripts/sad_lint.py docs/architecture/my-sdd.md
+   ```
+   The linter checks for:
+   - missing sections and leftover TBD/TODO placeholders;
+   - quality statements without a number ("highly available");
+   - no context diagram;
+   - elements drawn in a diagram but never described in the text (it parses Mermaid, PlantUML and `.drawio`, compressed or not);
+   - broken links.
+
+   Add `--json` for machine-readable output, or `--strict` to also fail on warnings.
+5. Ask the `architecture-reviewer` agent to review it. You get a verdict (Approve / Approve with conditions / Rework), findings ranked Blocker, Major, Minor or Question, and questions for the authors.
+
+Designs in Confluence: export them to Markdown, or fetch them with `confluence_sync.py --page <url>`. Keep the `.drawio` source (uncompressed) next to the document: diagrams that exist only as PNGs can't be cross-checked against the text.
+
 ## Use with Claude Code (plugin marketplace)
 
 ```bash
@@ -124,6 +164,9 @@ claude plugin install confluence-coverage@ai-library
 ```
 ```bash
 claude plugin install bdd-suite-optimizer@ai-library
+```
+```bash
+claude plugin install solution-architecture@ai-library
 ```
 Or inside a session: `/plugin marketplace add vitVitale/ai_library`, then `/plugin`. Skills trigger automatically (or run `/java-testing:junit5-tests`); agents appear in `/agents`.
 
